@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Matti Run</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Rethink+Sans:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1 class="logo">Matti <span>Run</span></h1>
+    <div class="modes" role="group" aria-label="Spielmodus">
+      <button type="button" id="mode-daily" data-mode="daily" aria-pressed="true">Tages-Lauf</button>
+      <button type="button" id="mode-free" data-mode="free" aria-pressed="false">Frei</button>
+    </div>
+    <button type="button" id="mute" class="mute" aria-pressed="false">Ton an</button>
+  </header>
+
+  <section class="hud">
+    <div class="stat"><span class="label">Punkte</span><span id="score" class="value">0</span></div>
+    <div class="stat combo"><span class="label">Combo</span><span id="combo" class="value">×1</span><span class="bar"><span id="combo-bar"></span></span></div>
+    <div class="stat"><span class="label">Rekord</span><span id="best" class="value">0</span></div>
+  </section>
+
+  <div class="board-wrap">
+    <canvas id="board" aria-label="Spielfeld"></canvas>
+    <div id="overlay" class="overlay">
+      <h2 id="ov-title">Matti Run</h2>
+      <p id="ov-text"></p>
+      <button type="button" id="ov-btn" class="cta">Los geht’s</button>
+    </div>
+  </div>
+
+  <footer class="help">
+    <p><kbd>← ↑ ↓ →</kbd> oder <kbd>WASD</kbd> laufen · <kbd>Leertaste</kbd> Pause · <kbd>M</kbd> Ton · auf dem Handy wischen</p>
+    <p>Leckerli: 10 Punkte × Combo. Bei jedem 3. Leckerli verliert Matti einen Fleck, der liegen bleibt und zum Hindernis wird. Goldener Knochen: 50 Punkte, räumt 3 Flecken weg.</p>
+  </footer>
+</main>
+<script src="game.js"></script>
+</body>
+</html>
