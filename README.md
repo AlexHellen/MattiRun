@@ -2,6 +2,8 @@
 
 Moderner Snake-Klon im Browser: Dalmatiner **Matti** sammelt Leckerlis im Park.
 
+**Spielen:** https://alexhellen.github.io/MattiRun/
+
 ## Twist gegenüber Snake
 
 - **Flecken als Hindernis**: bei jedem 3. Leckerli verliert Matti einen Fleck am Schwanzende, der liegen bleibt.
@@ -37,7 +39,7 @@ python -m http.server 8000   # dann http://localhost:8000
 
 ## Ideen / Roadmap
 
-- [ ] GitHub Pages Deployment
+- [x] GitHub Pages Deployment (Branch `main`, Root)
 - [ ] Power-ups (Ball = Zeitlupe, Eichhörnchen als bewegliches Ziel)
 - [ ] Online-Leaderboard für den Tages-Lauf
 - [ ] Skins (Leine, Halsband-Farben), Level mit festen Hindernissen
