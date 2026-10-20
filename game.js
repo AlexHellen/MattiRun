@@ -6,7 +6,7 @@
   const C = {
     lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
-    leash: '#d23a30', leashHi: '#f07a6e',
+    leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
     kibble: '#b8662e', kibbleHi: '#e09a5c', collar: '#e0483e',
     bag: '#3d6fd1', bagHi: '#a9c6f5', ball: '#d7e64a', stick: '#8a5a2b',
   };
@@ -36,7 +36,7 @@
     set(k, v) { try { localStorage.setItem('matti-run:' + k, JSON.stringify(v)); } catch { /* egal */ } },
   };
 
-  let S, size = 0, cell = 0, shake = 0, last = 0, particles = [], touch = null;
+  let S, size = 0, cell = 0, dpr = 1, shake = 0, last = 0, particles = [], touch = null;
   let muted = store.get('muted', false);
 
   // ---------- RNG ----------
@@ -272,7 +272,8 @@
 
   // ---------- Rendering ----------
   function resize() {
-    const w = wrap.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = wrap.clientWidth;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
     size = w;
     cell = w / COLS;
     canvas.width = Math.round(w * dpr);
@@ -404,12 +405,12 @@
     ctx.restore();
   }
 
-  // Sprites (aus KI-Charakterblatt ausgeschnitten): side schaut nach links
+  // Sprites (aus KI-Charakterblatt ausgeschnitten): side schaut nach links, ohne Beine
   const SPRITES = {};
-  for (const n of ['side', 'back', 'front']) {
+  for (const n of ['side-body', 'back', 'front']) {
     const img = new Image();
     img.src = `assets/matti-${n}.png`;
-    SPRITES[n] = img;
+    SPRITES[n.replace('-body', '')] = img;
   }
   const ready = img => img.complete && img.naturalWidth > 0;
   // Halsband-Position im Sprite (relativ, 0..1)
@@ -450,6 +451,59 @@
     ctx.restore();
   }
 
+  // Seitenansicht: Beine werden gezeichnet (Koordinaten im 192×186-Sprite).
+  // Trab: diagonale Paare schwingen gemeinsam, Knie beugt beim Vorschwingen.
+  const LEGS = [
+    { x: 64, y: 92, l1: 42, l2: 44, w: 14, far: true, ph: Math.PI },
+    { x: 138, y: 98, l1: 38, l2: 42, w: 16, far: true, ph: 0 },
+    { x: 56, y: 92, l1: 42, l2: 44, w: 15, far: false, ph: 0 },
+    { x: 128, y: 98, l1: 38, l2: 42, w: 17, far: false, ph: Math.PI },
+  ];
+  // Front/Rücken: Beinstreifen unterhalb von cut, Mitte (Schwanz/Brust) bleibt stehen
+  const FACING = { back: { cut: 140, mid: [19, 27] }, front: { cut: 132, mid: [22, 38] } };
+
+  // Hund wird offscreen zusammengesetzt und als Ganzes mit Glow gezeichnet,
+  // sonst bekommt jedes Beinsegment einen eigenen hellen Rand
+  const dog = document.createElement('canvas'), dctx = dog.getContext('2d');
+
+  function drawLeg(L, gait, moving) {
+    const phi = gait + L.ph;
+    // Vorschwingen = Richtung Kopf (-x); im Stand leicht gespreizt
+    const th = moving ? Math.sin(phi) * 0.5 : Math.cos(L.ph) * 0.2;
+    const knee = moving ? Math.max(0, Math.cos(phi)) * 0.9 : 0;
+    const kx = L.x - Math.sin(th) * L.l1, ky = L.y + Math.cos(th) * L.l1;
+    const th2 = th - knee;
+    const px = kx - Math.sin(th2) * L.l2, py = Math.min(180, ky + Math.cos(th2) * L.l2);
+    dctx.strokeStyle = dctx.fillStyle = L.far ? C.legFar : C.leg;
+    dctx.lineCap = 'round';
+    dctx.lineWidth = L.w;
+    dctx.beginPath(); dctx.moveTo(L.x, L.y); dctx.lineTo(kx, ky); dctx.stroke();
+    dctx.lineWidth = L.w * 0.6;
+    dctx.beginPath(); dctx.moveTo(kx, ky); dctx.lineTo(px, py); dctx.stroke();
+    dctx.beginPath();
+    dctx.ellipse(px - 3, py - 1, 7, 4.5, 0, 0, Math.PI * 2);
+    dctx.fill();
+  }
+
+  function drawSide(img, gait, moving) {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    for (const L of LEGS) if (L.far) drawLeg(L, gait, moving);
+    dctx.drawImage(img, 0, 0, nw, nh);
+    for (const L of LEGS) if (!L.far) drawLeg(L, gait, moving);
+  }
+
+  function drawFacing(img, f, gait, moving) {
+    const nw = img.naturalWidth, nh = img.naturalHeight, h = nh - f.cut;
+    const [m0, m1] = f.mid;
+    dctx.drawImage(img, 0, 0, nw, f.cut + 1, 0, 0, nw, f.cut + 1);
+    dctx.drawImage(img, m0, f.cut, m1 - m0, h, m0, f.cut, m1 - m0, h);
+    // angehobenes Bein: Pfote steigt, Streifen wird kürzer
+    for (const [x0, x1, ph] of [[0, m0, 0], [m1, nw, Math.PI]]) {
+      const lift = moving ? Math.max(0, Math.sin(gait + ph)) : 0;
+      dctx.drawImage(img, x0, f.cut, x1 - x0, h, x0, f.cut, x1 - x0, h * (1 - 0.3 * lift));
+    }
+  }
+
   function drawMatti(alpha, now) {
     const pts = S.snake.map((p, i) => {
       const f = S.from[i] || p;
@@ -461,7 +515,7 @@
     const d = mv.x || mv.y ? mv : S.dir;
     const running = S.phase === 'run';
     const dead = S.phase === 'over';
-    const gait = running ? (S.t / stepMs()) * Math.PI : 0;  // ein Schritt pro Feld
+    const gait = S.gait || 0;
     const bob = Math.abs(Math.sin(gait)) * cell * 0.07;
     const head = pts[0], neck = pts[1] || head;
 
@@ -495,10 +549,18 @@
     if (dead) ctx.rotate(d.x > 0 ? -0.25 : 0.25);
     else if (d.x) ctx.rotate(Math.sin(gait) * 0.035);
     if (d.x > 0) ctx.scale(-1, 1);        // Sprite schaut nach links
+
+    const k = sw / img.naturalWidth * dpr;
+    dog.width = Math.ceil(img.naturalWidth * k);
+    dog.height = Math.ceil(img.naturalHeight * k);
+    dctx.setTransform(k, 0, 0, k, 0, 0);
+    if (d.x) drawSide(img, gait, running);
+    else drawFacing(img, FACING[d.y < 0 ? 'back' : 'front'], gait, running);
+
     // heller Rand, damit Schwarz auf Gras lesbar bleibt
     ctx.shadowColor = sprinting() ? C.ball : 'rgba(251,250,246,0.55)';
     ctx.shadowBlur = cell * (sprinting() ? 0.4 : 0.12);
-    ctx.drawImage(img, -sw / 2, -sh, sw, sh);
+    ctx.drawImage(dog, -sw / 2, -sh, sw, sh);
     ctx.restore();
   }
 
@@ -510,6 +572,7 @@
     if (S.phase === 'run') {
       S.t += dt * 1000;
       S.acc += dt * 1000;
+      S.gait = (S.gait || 0) + dt * 1000 / stepMs() * Math.PI;
       let ms = stepMs();
       while (S.acc >= ms && S.phase === 'run') {
         S.acc -= ms;
