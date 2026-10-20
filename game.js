@@ -2,11 +2,12 @@
 
 (() => {
   const COLS = 21, ROWS = 21;
-  // Rand um das Spielfeld (in Feldern): oben Platz für Mattis Kopf, wenn er in Reihe 0 läuft
-  const PAD = { top: 1.6, side: 0.3, bottom: 0.25 };
+  // Rand um das Spielfeld (in Feldern) für den Zaun; oben zusätzlich Platz,
+  // damit Mattis Kopf in Reihe 0 über den Zaun ragen kann
+  const PAD = { top: 1.8, side: 0.32, bottom: 0.32 };
   const COMBO_MS = 3000, ITEM_MS = 6000, POOP_EVERY = 3, MAX_COMBO = 5, SPRINT_MS = 5000;
   const C = {
-    lawnA: '#3d7a4b', lawnB: '#43834f', hedge: '#2b5935', hedgeA: '#336b3f', hedgeB: '#285433', fur: '#fbfaf6',
+    lawnA: '#3d7a4b', lawnB: '#43834f', fence: '#7a5a3a', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
     leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
     treat: '#f6e7c8', treatEdge: '#7a4a1e', kibbleHi: '#e09a5c', collar: '#e0483e',
@@ -288,18 +289,24 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function drawBorder() {
-    ctx.fillStyle = C.hedge;
-    ctx.fillRect(0, 0, W, H);
-    // Hecke im oberen Streifen
-    const base = PAD.top * cell;
-    for (let i = 0, x = 0; x < W + cell; i++, x += cell * 0.8) {
-      ctx.fillStyle = i % 2 ? C.hedgeA : C.hedgeB;
+  // Zaun direkt um die Wiese; darüber bleibt der Seitenhintergrund sichtbar,
+  // damit klar ist, wo das Feld endet
+  function drawFence() {
+    const f = PAD.side * cell, y = PAD.top * cell - f;
+    const h = (ROWS + 2 * PAD.side) * cell;
+    const box = dy => {
       ctx.beginPath();
-      ctx.arc(x, base - cell * 0.35 - (i % 3) * cell * 0.12, cell * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
+      if (ctx.roundRect) ctx.roundRect(0, y + dy, W, h, f * 1.2);
+      else ctx.rect(0, y + dy, W, h);
+    };
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    box(f * 0.6);
+    ctx.fill();
+    ctx.fillStyle = C.fence;
+    box(0);
+    ctx.fill();
   }
+
 
   function boneShape(x, y, s, fill, outline) {
     const c = cell * s;
@@ -411,7 +418,7 @@
     ctx.save();
     ctx.clearRect(0, 0, W, H);
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-    drawBorder();
+    drawFence();
     ctx.translate(PAD.side * cell, PAD.top * cell);
 
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
