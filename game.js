@@ -7,7 +7,7 @@
     lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
     leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
-    kibble: '#b8662e', kibbleHi: '#e09a5c', collar: '#e0483e',
+    treat: '#f6e7c8', treatEdge: '#7a4a1e', kibbleHi: '#e09a5c', collar: '#e0483e',
     bag: '#3d6fd1', bagHi: '#a9c6f5', ball: '#d7e64a', stick: '#8a5a2b',
   };
   // Sonder-Items, höchstens eins gleichzeitig auf dem Feld
@@ -281,19 +281,42 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function boneShape(x, y, s, fill) {
+  function boneShape(x, y, s, fill, outline) {
     const c = cell * s;
     ctx.save();
     ctx.translate(x * cell, y * cell);
     ctx.rotate(-0.5);
-    ctx.fillStyle = fill;
-    ctx.fillRect(-c * 0.32, -c * 0.09, c * 0.64, c * 0.18);
-    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const shape = () => {
       ctx.beginPath();
-      ctx.arc(sx * c * 0.33, sy * c * 0.09, c * 0.12, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.rect(-c * 0.32, -c * 0.09, c * 0.64, c * 0.18);
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+        ctx.moveTo(sx * c * 0.33 + c * 0.12, sy * c * 0.09);
+        ctx.arc(sx * c * 0.33, sy * c * 0.09, c * 0.12, 0, Math.PI * 2);
+      }
+    };
+    if (outline) {
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = c * 0.12;
+      ctx.lineJoin = 'round';
+      shape();
+      ctx.stroke();
     }
+    ctx.fillStyle = fill;
+    shape();
+    ctx.fill('nonzero');
     ctx.restore();
+  }
+
+  // Leckerli: heller Knochen mit dunkler Kontur und pulsierendem Lichtkreis,
+  // damit es sich auch auf kleinen Handy-Displays klar von den Haufen abhebt
+  function drawTreat(t, now) {
+    const x = (t.x + 0.5) * cell, y = (t.y + 0.5) * cell;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+    ctx.fillStyle = `rgba(255, 244, 214, ${0.18 + 0.17 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(x, y, cell * (0.5 + 0.12 * pulse), 0, Math.PI * 2);
+    ctx.fill();
+    boneShape(t.x + 0.5, t.y + 0.5 + Math.sin(now / 300) * 0.05, 1.15, C.treat, C.treatEdge);
   }
 
   function poopShape(x, y, k, flip) {
@@ -379,14 +402,12 @@
       poopShape(p.x + 0.5, p.y + 0.5, 1 - (1 - k) ** 3, p.flip);
     }
 
-    if (S.treat) {
-      const bob = Math.sin(now / 300) * 0.05;
-      boneShape(S.treat.x + 0.5, S.treat.y + 0.5 + bob, 0.95, C.kibble);
-    }
+    drawMatti(alpha, now);
+
+    // Leckerli und Items nach Matti zeichnen, sonst verdeckt ihn sein 2–3 Felder großes Sprite
+    if (S.treat) drawTreat(S.treat, now);
     // läuft das Item ab, blinkt es
     if (S.item && (S.item.until - S.t > 1500 || Math.floor(now / 120) % 2)) drawItem(S.item, now);
-
-    drawMatti(alpha, now);
 
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life);
