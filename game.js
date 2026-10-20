@@ -2,9 +2,11 @@
 
 (() => {
   const COLS = 21, ROWS = 21;
+  // Rand um das Spielfeld (in Feldern): oben Platz für Mattis Kopf, wenn er in Reihe 0 läuft
+  const PAD = { top: 1.6, side: 0.3, bottom: 0.25 };
   const COMBO_MS = 3000, ITEM_MS = 6000, POOP_EVERY = 3, MAX_COMBO = 5, SPRINT_MS = 5000;
   const C = {
-    lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6',
+    lawnA: '#3d7a4b', lawnB: '#43834f', hedge: '#2b5935', hedgeA: '#336b3f', hedgeB: '#285433', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
     leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
     treat: '#f6e7c8', treatEdge: '#7a4a1e', kibbleHi: '#e09a5c', collar: '#e0483e',
@@ -36,7 +38,7 @@
     set(k, v) { try { localStorage.setItem('matti-run:' + k, JSON.stringify(v)); } catch { /* egal */ } },
   };
 
-  let S, size = 0, cell = 0, dpr = 1, shake = 0, last = 0, particles = [], touch = null;
+  let S, W = 0, H = 0, cell = 0, dpr = 1, shake = 0, last = 0, particles = [], touch = null;
   let muted = store.get('muted', false);
 
   // ---------- RNG ----------
@@ -271,14 +273,32 @@
   }
 
   // ---------- Rendering ----------
+  // Canvas-Höhe wird explizit in px gesetzt und der Rahmen wächst mit.
+  // (height: 100% in einer aspect-ratio-Box rechnet Safari anders -> Rand überdeckte die unterste Reihe)
   function resize() {
-    const w = wrap.clientWidth;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    size = w;
-    cell = w / COLS;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(w * dpr);
+    const w = wrap.clientWidth, r = Math.min(window.devicePixelRatio || 1, 2);
+    if (w === W && r === dpr) return;   // eigene Höhenänderung löst den Observer erneut aus
+    dpr = r;
+    W = w;
+    cell = w / (COLS + 2 * PAD.side);
+    H = Math.round(cell * (ROWS + PAD.top + PAD.bottom));
+    canvas.style.height = H + 'px';
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function drawBorder() {
+    ctx.fillStyle = C.hedge;
+    ctx.fillRect(0, 0, W, H);
+    // Hecke im oberen Streifen
+    const base = PAD.top * cell;
+    for (let i = 0, x = 0; x < W + cell; i++, x += cell * 0.8) {
+      ctx.fillStyle = i % 2 ? C.hedgeA : C.hedgeB;
+      ctx.beginPath();
+      ctx.arc(x, base - cell * 0.35 - (i % 3) * cell * 0.12, cell * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   function boneShape(x, y, s, fill, outline) {
@@ -389,8 +409,10 @@
 
   function render(alpha, now) {
     ctx.save();
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, W, H);
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    drawBorder();
+    ctx.translate(PAD.side * cell, PAD.top * cell);
 
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       ctx.fillStyle = (x + y) % 2 ? C.lawnA : C.lawnB;
