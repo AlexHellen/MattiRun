@@ -6,9 +6,13 @@ Moderner Snake-Klon im Browser: der schwarze Hund **Matti** sammelt Leckerlis im
 
 ## Twist gegenüber Snake
 
-- **Flecken als Hindernis**: bei jedem 3. Leckerli verliert Matti einen Fleck am Schwanzende, der liegen bleibt.
+- **Leine statt Schwanz**: jedes Leckerli verlängert Matti's Leine; wer in die eigene Leine läuft, verheddert sich.
+- **Häufchen als Hindernis**: nach jedem 3. Leckerli macht Matti hinter sich ein Häufchen, das liegen bleibt.
 - **Combo**: Leckerli innerhalb von 3 s nach dem letzten → Multiplikator bis ×5.
-- **Goldener Knochen**: taucht ab und zu auf, verschwindet nach 6 s; 50 Punkte × Combo, räumt 3 Flecken weg.
+- **Sonder-Items** (höchstens eins gleichzeitig, verschwinden nach 6 s):
+  - **Kotbeutel** – 50 Punkte, räumt 3 Haufen weg
+  - **Tennisball** – 30 Punkte, 5 s Sprint: schneller, Leckerlis zählen doppelt
+  - **Stock** – 20 Punkte, Leine 2 Felder kürzer
 - **Tages-Lauf**: Seed = heutiges Datum, Rekord pro Tag. **Frei**: zufälliger Seed.
 - Tempo steigt mit jedem Leckerli.
 
@@ -41,6 +45,8 @@ python -m http.server 8000   # dann http://localhost:8000
 ## Ideen / Roadmap
 
 - [x] GitHub Pages Deployment (Branch `main`, Root)
-- [ ] Power-ups (Ball = Zeitlupe, Eichhörnchen als bewegliches Ziel)
+- [x] Power-ups: Kotbeutel, Tennisball, Stock
+- [ ] Eichhörnchen als bewegliches Ziel
+- [ ] Lauf-Animation (mehrere Frames pro Richtung)
 - [ ] Online-Leaderboard für den Tages-Lauf
 - [ ] Skins (Leine, Halsband-Farben), Level mit festen Hindernissen
