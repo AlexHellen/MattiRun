@@ -18,7 +18,11 @@
       <button type="button" id="mode-daily" data-mode="daily" aria-pressed="true">Tages-Lauf</button>
       <button type="button" id="mode-free" data-mode="free" aria-pressed="false">Frei</button>
     </div>
-    <button type="button" id="mute" class="mute" aria-pressed="false">Ton an</button>
+    <div class="chips">
+      <button type="button" id="pause" class="chip" disabled>Pause</button>
+      <button type="button" id="mute" class="chip" aria-pressed="false">Ton an</button>
+      <button type="button" id="dpad-toggle" class="chip touch-only" aria-pressed="false">Steuerkreuz</button>
+    </div>
   </header>
 
   <section class="hud">
@@ -32,13 +36,26 @@
     <div id="overlay" class="overlay">
       <h2 id="ov-title">Matti Run</h2>
       <p id="ov-text"></p>
+      <div id="levels" class="modes levels" role="group" aria-label="Schwierigkeit">
+        <button type="button" id="level-easy" data-level="easy" aria-pressed="false">Gassi</button>
+        <button type="button" id="level-normal" data-level="normal" aria-pressed="true">Normal</button>
+        <button type="button" id="level-hard" data-level="hard" aria-pressed="false">Hundeschule</button>
+      </div>
       <button type="button" id="ov-btn" class="cta">Los geht’s</button>
     </div>
   </div>
 
+  <div id="dpad" class="dpad" hidden>
+    <button type="button" id="dpad-up" data-dir="0,-1" aria-label="Hoch">▲</button>
+    <button type="button" id="dpad-left" data-dir="-1,0" aria-label="Links">◀</button>
+    <button type="button" id="dpad-down" data-dir="0,1" aria-label="Runter">▼</button>
+    <button type="button" id="dpad-right" data-dir="1,0" aria-label="Rechts">▶</button>
+  </div>
+
   <footer class="help">
-    <p><kbd>← ↑ ↓ →</kbd> oder <kbd>WASD</kbd> laufen · <kbd>Leertaste</kbd> Pause · <kbd>M</kbd> Ton · auf dem Handy wischen</p>
-    <p>Leckerli: 10 Punkte × Combo, die Leine wird länger. Nach jedem 3. Leckerli macht Matti ein Häufchen, nicht reintreten!</p>
+    <p><kbd>← ↑ ↓ →</kbd> oder <kbd>WASD</kbd> laufen · <kbd>Leertaste</kbd> Pause · <kbd>M</kbd> Ton · auf dem Handy wischen oder Steuerkreuz</p>
+    <p>Gassi: gemütlich, keine Häufchen. Normal: Häufchen nach jedem 3. Leckerli. Hundeschule: schneller, Häufchen nach jedem 2. Leckerli.</p>
+    <p>Leckerli: 10 Punkte × Combo, die Leine wird länger. Matti macht zwischendurch Häufchen, nicht reintreten!</p>
     <p>Kotbeutel: räumt 3 Haufen weg. Tennisball: 5 s Sprint, Leckerlis zählen doppelt. Stock: Leine 2 Felder kürzer.</p>
   </footer>
 </main>

@@ -7,22 +7,23 @@ Moderner Snake-Klon im Browser: der schwarze Hund **Matti** sammelt Leckerlis im
 ## Twist gegenüber Snake
 
 - **Leine statt Schwanz**: jedes Leckerli verlängert Matti's Leine; wer in die eigene Leine läuft, verheddert sich.
-- **Häufchen als Hindernis**: nach jedem 3. Leckerli macht Matti hinter sich ein Häufchen, das liegen bleibt.
+- **Häufchen als Hindernis**: Matti macht zwischendurch hinter sich ein Häufchen, das liegen bleibt.
 - **Combo**: Leckerli innerhalb von 3 s nach dem letzten → Multiplikator bis ×5.
 - **Sonder-Items** (höchstens eins gleichzeitig, verschwinden nach 6 s):
   - **Kotbeutel** – 50 Punkte, räumt 3 Haufen weg
   - **Tennisball** – 30 Punkte, 5 s Sprint: schneller, Leckerlis zählen doppelt
   - **Stock** – 20 Punkte, Leine 2 Felder kürzer
-- **Tages-Lauf**: Seed = heutiges Datum, Rekord pro Tag. **Frei**: zufälliger Seed.
+- **Schwierigkeit**: *Gassi* (gemütlich, keine Häufchen), *Normal* (Häufchen nach jedem 3. Leckerli), *Hundeschule* (schneller, Häufchen nach jedem 2.). Rekord pro Stufe.
+- **Tages-Lauf**: Seed = heutiges Datum, Rekord pro Tag. Leckerlis erscheinen für alle in derselben Reihenfolge, egal wie man läuft (eigener Zufallsstrom; belegtes Zielfeld → nächstes freies Feld). **Frei**: zufälliger Seed.
 - Tempo steigt mit jedem Leckerli.
 
 ## Steuerung
 
 | Aktion | Desktop | Mobil |
 |---|---|---|
-| Laufen | Pfeiltasten / WASD | Wischen |
+| Laufen | Pfeiltasten / WASD | Wischen oder Steuerkreuz (Schalter oben) |
 | Start / Neustart | Enter | Button |
-| Pause | Leertaste / P / Esc | – |
+| Pause | Leertaste / P / Esc | Pause-Button |
 | Ton | M | Button |
 
 ## Lokal starten
