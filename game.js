@@ -5,7 +5,13 @@
   // Rand um das Spielfeld (in Feldern) für den Zaun; oben zusätzlich Platz,
   // damit Mattis Kopf in Reihe 0 über den Zaun ragen kann
   const PAD = { top: 1.8, side: 0.32, bottom: 0.32 };
-  const COMBO_MS = 3000, ITEM_MS = 6000, POOP_EVERY = 3, MAX_COMBO = 5, SPRINT_MS = 5000;
+  const COMBO_MS = 3000, ITEM_MS = 6000, MAX_COMBO = 5, SPRINT_MS = 5000;
+  // Schwierigkeit: Tempo in ms pro Feld (Start, Minimum, Beschleunigung je Leckerli), Häufchen-Takt (0 = keine)
+  const LEVELS = {
+    easy: { start: 175, min: 95, accel: 1.6, poopEvery: 0 },
+    normal: { start: 145, min: 68, accel: 2.2, poopEvery: 3 },
+    hard: { start: 120, min: 58, accel: 2.6, poopEvery: 2 },
+  };
   const C = {
     lawnA: '#3d7a4b', lawnB: '#43834f', fence: '#7a5a3a', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
@@ -29,7 +35,9 @@
   const ui = {
     score: $('score'), best: $('best'), combo: $('combo'), comboBar: $('combo-bar'),
     overlay: $('overlay'), title: $('ov-title'), text: $('ov-text'), btn: $('ov-btn'),
-    mute: $('mute'), modes: [...document.querySelectorAll('[data-mode]')],
+    mute: $('mute'), pause: $('pause'), modes: [...document.querySelectorAll('[data-mode]')],
+    levelBox: $('levels'), levels: [...document.querySelectorAll('[data-level]')],
+    dpad: $('dpad'), dpadToggle: $('dpad-toggle'),
   };
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -46,32 +54,39 @@
   const todaySeed = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
   const fmtDate = s => `${s % 100}.${Math.floor(s / 100) % 100}.${Math.floor(s / 10000)}`;
 
-  // mulberry32, Zustand in S.rng -> Tages-Seed reproduzierbar und snapshot-fähig
-  function rand() {
-    let t = (S.rng = (S.rng + 0x6D2B79F5) | 0);
+  // mulberry32, Zustand im Spielstand -> Tages-Seed reproduzierbar und snapshot-fähig.
+  // Zwei Ströme: S.rng für Items/Häufchen, S.trng nur für Leckerli-Positionen
+  function mulberry(key) {
+    let t = (S[key] = (S[key] + 0x6D2B79F5) | 0);
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
+  const rand = () => mulberry('rng');
 
-  const bestKey = () => (S.mode === 'daily' ? 'best:daily:' + S.seed : 'best:free');
+  // Normal behält die alten Rekord-Schlüssel
+  const bestKey = () => (S.mode === 'daily' ? 'best:daily:' + S.seed : 'best:free') + (S.level === 'normal' ? '' : ':' + S.level);
   const sprinting = () => S.t < S.sprintUntil;
-  const stepMs = () => Math.max(68, 145 - S.eaten * 2.2) * (sprinting() ? 0.65 : 1);
+  const stepMs = () => {
+    const L = LEVELS[S.level];
+    return Math.max(L.min, L.start - S.eaten * L.accel) * (sprinting() ? 0.65 : 1);
+  };
   const same = (a, b) => a && b && a.x === b.x && a.y === b.y;
 
   // ---------- Spielzustand ----------
-  function newGame(mode) {
+  function newGame(mode, level = S?.level ?? store.get('level', 'normal')) {
     const seed = mode === 'daily' ? todaySeed() : (Math.random() * 2 ** 32) >>> 0;
     const snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
     S = {
-      mode, seed, rng: seed, snake, from: snake.map(p => ({ ...p })),
+      mode, level, seed, rng: seed, trng: seed ^ 0x9E3779B9, snake, from: snake.map(p => ({ ...p })),
       dir: { x: 1, y: 0 }, queue: [], poops: [], treat: null, item: null,
       score: 0, eaten: 0, combo: 1, comboUntil: 0, sprintUntil: 0, t: 0, acc: 0,
       phase: 'ready', reason: '', newBest: false,
     };
-    S.treat = freeCell();
+    S.treat = treatCell();
     particles = [];
     store.set('mode', mode);
+    store.set('level', level);
     updateHud();
     showOverlay();
   }
@@ -89,6 +104,17 @@
     const free = [];
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (!occupied(x, y)) free.push({ x, y });
     return free.length ? free[Math.floor(rand() * free.length)] : null;
+  }
+
+  // Leckerli-Folge hängt nur am Seed: Zielfeld aus eigenem Strom, ist es belegt,
+  // rückt das Leckerli ins nächste freie Feld (zeilenweise) -> im Tages-Lauf für alle gleich
+  function treatCell() {
+    const n = COLS * ROWS, start = Math.floor(mulberry('trng') * n);
+    for (let i = 0; i < n; i++) {
+      const k = (start + i) % n, x = k % COLS, y = Math.floor(k / COLS);
+      if (!occupied(x, y)) return { x, y };
+    }
+    return null;
   }
 
   function step() {
@@ -125,9 +151,10 @@
     if (kind === 'treat') {
       S.eaten++;
       burst(x, y, C.kibbleHi, 12);
-      S.treat = freeCell();
+      S.treat = treatCell();
       sfx.eat(S.combo);
-      if (S.eaten % POOP_EVERY === 0) dropPoop();
+      const every = LEVELS[S.level].poopEvery;
+      if (every && S.eaten % every === 0) dropPoop();
       if (!S.item && S.eaten >= 4) spawnItem();
     } else {
       S.item = null;
@@ -194,18 +221,22 @@
     ui.best.textContent = Math.max(store.get(bestKey(), 0), S.score);
     ui.combo.textContent = '×' + S.combo;
     ui.modes.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode)));
+    ui.levels.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.level === S.level)));
   }
 
   function showOverlay() {
     const o = {
       ready: ['Matti Run',
-        S.mode === 'daily' ? `Tages-Lauf vom ${fmtDate(S.seed)}. Alle starten mit demselben Seed.` : 'Freies Spiel mit zufälligem Seed.',
+        S.mode === 'daily' ? `Tages-Lauf vom ${fmtDate(S.seed)}. Alle bekommen die Leckerlis in derselben Reihenfolge.` : 'Freies Spiel mit zufälligem Seed.',
         'Los geht’s'],
       pause: ['Pause', 'Matti schnüffelt kurz am Laternenpfahl.', 'Weiter'],
       over: [S.newBest ? 'Neuer Rekord!' : 'Aus!', `${S.reason} ${S.score} Punkte, ${S.eaten} Leckerlis.`, 'Nochmal'],
     }[S.phase];
     ui.overlay.hidden = !o;
     if (o) [ui.title.textContent, ui.text.textContent, ui.btn.textContent] = o;
+    ui.levelBox.hidden = S.phase === 'pause';
+    ui.pause.disabled = !(S.phase === 'run' || S.phase === 'pause');
+    ui.pause.textContent = S.phase === 'pause' ? 'Weiter' : 'Pause';
   }
 
   function primary() {
@@ -673,7 +704,7 @@
   addEventListener('pointermove', e => {
     if (!touch) return;
     const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
-    if (Math.hypot(dx, dy) < 24) return;
+    if (Math.hypot(dx, dy) < 14) return;
     Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy));
     touch = { x: e.clientX, y: e.clientY };
   });
@@ -682,12 +713,28 @@
 
   ui.btn.addEventListener('click', primary);
   ui.mute.addEventListener('click', toggleMute);
+  ui.pause.addEventListener('click', () => { togglePause(); ui.pause.blur(); });
   ui.modes.forEach(b => b.addEventListener('click', () => { newGame(b.dataset.mode); b.blur(); }));
+  ui.levels.forEach(b => b.addEventListener('click', () => { newGame(S.mode, b.dataset.level); b.blur(); }));
+
+  // Steuerkreuz (nur Touch): reagiert schon beim Antippen, nicht erst beim Loslassen
+  ui.dpad.querySelectorAll('[data-dir]').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    initAudio();
+    turn(...b.dataset.dir.split(',').map(Number));
+  }));
+  function setDpad(on) {
+    ui.dpad.hidden = !on;
+    document.body.classList.toggle('with-dpad', on);
+    ui.dpadToggle.setAttribute('aria-pressed', String(on));
+    store.set('dpad', on);
+  }
+  ui.dpadToggle.addEventListener('click', () => { setDpad(ui.dpad.hidden); ui.dpadToggle.blur(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && S.phase === 'run') togglePause(); });
 
   // ---------- Boot ----------
   function boot(data = {}) {
-    if (data.S && data.S.poops) {
+    if (data.S && data.S.poops && data.S.level) {
       S = data.S;
       if (S.phase === 'run') S.phase = 'pause';
       updateHud();
@@ -696,6 +743,7 @@
       newGame(store.get('mode', 'daily'));
     }
     muted = !muted; toggleMute(); // Button-Label synchronisieren
+    setDpad(store.get('dpad', false));
     resize();
     new ResizeObserver(resize).observe(wrap);
     requestAnimationFrame(frame);

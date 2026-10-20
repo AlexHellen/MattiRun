@@ -80,7 +80,9 @@ button { font: inherit; cursor: pointer; }
 }
 .modes button[aria-pressed="true"] { background: var(--fur); color: var(--ink); }
 
-.mute {
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.chip {
   border: 1px solid var(--night-2);
   border-radius: 999px;
   padding: 6px 12px;
@@ -88,7 +90,12 @@ button { font: inherit; cursor: pointer; }
   color: var(--muted);
   font-weight: 600;
 }
-.mute[aria-pressed="true"] { color: var(--fur); border-color: var(--muted); }
+.chip[aria-pressed="true"] { color: var(--fur); border-color: var(--muted); }
+.chip:disabled { opacity: 0.4; cursor: default; }
+
+/* Steuerkreuz-Schalter nur auf Touch-Geräten */
+.touch-only { display: none; }
+@media (pointer: coarse) { .touch-only { display: inline-block; } }
 
 .hud {
   display: grid;
@@ -144,6 +151,37 @@ button { font: inherit; cursor: pointer; }
 }
 
 canvas { display: block; width: 100%; }
+
+/* mit Steuerkreuz braucht es unten Platz -> Spielfeld kleiner */
+.with-dpad .board-wrap { width: min(100%, 560px, max(240px, calc(100dvh - 450px))); }
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(2, 56px);
+  grid-template-areas: ". up ." "left down right";
+  gap: 8px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dpad[hidden] { display: none; }
+.dpad button {
+  border: 0;
+  border-radius: 14px;
+  background: var(--night-2);
+  color: var(--fur);
+  font-size: 1.3rem;
+  -webkit-tap-highlight-color: transparent;
+}
+.dpad button:active { background: var(--fence); }
+#dpad-up { grid-area: up; }
+#dpad-left { grid-area: left; }
+#dpad-down { grid-area: down; }
+#dpad-right { grid-area: right; }
+
+.levels[hidden] { display: none; }
+.levels button { padding: 6px 12px; }
 .overlay[hidden] { display: none; }
 
 .overlay {
