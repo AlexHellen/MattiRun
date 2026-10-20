@@ -1,6 +1,6 @@
 # Matti Run
 
-Moderner Snake-Klon im Browser: Dalmatiner **Matti** sammelt Leckerlis im Park.
+Moderner Snake-Klon im Browser: der schwarze Hund **Matti** sammelt Leckerlis im Park, seine Leine wird mit jedem Leckerli länger.
 
 **Spielen:** https://alexhellen.github.io/MattiRun/
 
@@ -36,6 +36,7 @@ python -m http.server 8000   # dann http://localhost:8000
 - `index.html` – Markup, HUD, Overlay
 - `style.css` – Layout & Farben
 - `game.js` – Spiellogik (Fixed-Timestep, Interpolation), Canvas-Rendering, WebAudio-SFX, Input
+- `assets/` – Hunde-Sprites (Seite, Rücken, Front), aus einem KI-generierten Charakterblatt (MAI-Image-2.6) freigestellt
 
 ## Ideen / Roadmap
 

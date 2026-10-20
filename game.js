@@ -5,6 +5,7 @@
   const COMBO_MS = 3000, BONE_MS = 6000, SPOT_EVERY = 3, MAX_COMBO = 5;
   const C = {
     lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6', spot: '#16130f',
+    leash: '#d23a30', leashHi: '#f07a6e',
     kibble: '#b8662e', kibbleHi: '#e09a5c', gold: '#f2c14e', collar: '#e0483e',
   };
   const KEYS = {
@@ -41,12 +42,6 @@
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
-  // stabiles Fellmuster pro Segment
-  function hash(n) {
-    let t = Math.imul(n ^ 0x9E3779B9, 0x85EBCA6B);
-    t ^= t >>> 13; t = Math.imul(t, 0xC2B2AE35);
-    return ((t ^ (t >>> 16)) >>> 0) / 4294967296;
-  }
 
   const bestKey = () => (S.mode === 'daily' ? 'best:daily:' + S.seed : 'best:free');
   const stepMs = () => Math.max(68, 145 - S.eaten * 2.2);
@@ -55,7 +50,7 @@
   // ---------- Spielzustand ----------
   function newGame(mode) {
     const seed = mode === 'daily' ? todaySeed() : (Math.random() * 2 ** 32) >>> 0;
-    const snake = [{ x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
+    const snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
     S = {
       mode, seed, rng: seed, snake, from: snake.map(p => ({ ...p })),
       dir: { x: 1, y: 0 }, queue: [], spots: [], treat: null, bone: null,
@@ -92,7 +87,7 @@
     if (n.x < 0 || n.y < 0 || n.x >= COLS || n.y >= ROWS) return die('Gegen den Zaun gelaufen.');
     // Schwanzspitze rückt weg, außer Matti wächst gerade
     const body = food ? S.snake : S.snake.slice(0, -1);
-    if (body.some(p => same(p, n))) return die('In den eigenen Schwanz gebissen.');
+    if (body.some(p => same(p, n))) return die('In der eigenen Leine verheddert.');
     if (S.spots.some(p => same(p, n))) return die('Über einen Fleck gestolpert.');
 
     S.from = S.snake.map(p => ({ ...p }));
@@ -308,7 +303,7 @@
       }
     }
 
-    drawMatti(alpha);
+    drawMatti(alpha, now);
 
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life);
@@ -327,90 +322,101 @@
     ctx.restore();
   }
 
-  function drawMatti(alpha) {
-    const n = S.snake.length;
+  // Sprites (aus KI-Charakterblatt ausgeschnitten): side schaut nach links
+  const SPRITES = {};
+  for (const n of ['side', 'back', 'front']) {
+    const img = new Image();
+    img.src = `assets/matti-${n}.png`;
+    SPRITES[n] = img;
+  }
+  const ready = img => img.complete && img.naturalWidth > 0;
+  // Halsband-Position im Sprite (relativ, 0..1)
+  const COLLAR = { side: [0.26, 0.27], back: [0.5, 0.25], front: [0.5, 0.29] };
+
+  function drawLeash(pts) {
+    const n = pts.length;
+    if (n < 2) return;
+    const path = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    };
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = cell * 0.22;
+    ctx.save(); ctx.translate(0, cell * 0.08); path(); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = C.leash;
+    ctx.lineWidth = cell * 0.16;
+    path(); ctx.stroke();
+    // Webmuster der Leine
+    ctx.strokeStyle = C.leashHi;
+    ctx.lineWidth = cell * 0.04;
+    ctx.setLineDash([cell * 0.12, cell * 0.14]);
+    path(); ctx.stroke();
+    ctx.setLineDash([]);
+    // Handschlaufe am Ende
+    const e = pts[n - 1], p = pts[n - 2];
+    const ang = Math.atan2(e.y - p.y, e.x - p.x);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(ang);
+    ctx.strokeStyle = C.leash;
+    ctx.lineWidth = cell * 0.13;
+    ctx.beginPath();
+    ctx.ellipse(cell * 0.18, 0, cell * 0.22, cell * 0.15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMatti(alpha, now) {
     const pts = S.snake.map((p, i) => {
       const f = S.from[i] || p;
       return { x: (f.x + (p.x - f.x) * alpha + 0.5) * cell, y: (f.y + (p.y - f.y) * alpha + 0.5) * cell };
     });
 
-    const path = (dy = 0) => {
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y + dy);
-      for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y + dy);
-    };
-    ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.lineWidth = cell * 0.78;
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    path(cell * 0.09);
-    ctx.stroke();
-    ctx.strokeStyle = C.fur;
-    path();
-    ctx.stroke();
-
-    // Fellflecken: Index vom Schwanz aus, damit das Muster beim Wachsen stabil bleibt
-    ctx.fillStyle = C.spot;
-    for (let i = 1; i < n; i++) {
-      const k = n - 1 - i;
-      if (hash(k) > 0.62) continue;
-      const ox = (hash(k + 77) - 0.5) * 0.34 * cell, oy = (hash(k + 191) - 0.5) * 0.34 * cell;
-      ctx.beginPath();
-      ctx.arc(pts[i].x + ox, pts[i].y + oy, (0.07 + hash(k + 33) * 0.09) * cell, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Kopf
     const h = S.snake[0], f = S.from[0] || h;
     const mv = { x: h.x - f.x, y: h.y - f.y };
     const d = mv.x || mv.y ? mv : S.dir;
+    const running = S.phase === 'run';
     const dead = S.phase === 'over';
+    const gait = running ? (S.t / stepMs()) * Math.PI : 0;  // ein Schritt pro Feld
+    const bob = Math.abs(Math.sin(gait)) * cell * 0.07;
+    const head = pts[0], neck = pts[1] || head;
+
+    let img, x, y;
+    if (d.x) {
+      img = SPRITES.side;
+      x = (head.x + neck.x) / 2;          // Körper zwischen Kopf- und Nackenfeld
+      y = head.y + cell * 0.45;           // Pfoten am unteren Zellrand
+    } else {
+      img = d.y < 0 ? SPRITES.back : SPRITES.front;
+      x = head.x;
+      y = (d.y < 0 ? neck.y : head.y) + cell * 0.45;
+    }
+    if (!ready(img)) { drawLeash(pts); return; }
+    const ratio = img.naturalWidth / img.naturalHeight;
+    const sw = d.x ? cell * 2.3 : cell * 2.7 * ratio, sh = sw / ratio;
+
+    // Leine startet am Halsband und läuft hinter Matti entlang
+    const [cu, cv] = COLLAR[img === SPRITES.side ? 'side' : d.y < 0 ? 'back' : 'front'];
+    const leash = [{ x: x + (cu - 0.5) * sw * (d.x > 0 ? -1 : 1), y: y - bob - sh * (1 - cv) }, ...pts.slice(1)];
+    drawLeash(leash);
+
+    // Bodenschatten
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, (d.x ? sw * 0.4 : sw * 0.7), cell * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.save();
-    ctx.translate(pts[0].x, pts[0].y);
-    ctx.rotate(Math.atan2(d.y, d.x));
-
-    ctx.fillStyle = C.collar;
-    ctx.fillRect(-cell * 0.36, -cell * 0.4, cell * 0.14, cell * 0.8);
-
-    ctx.fillStyle = C.spot;
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.ellipse(-cell * 0.08, s * cell * 0.4, cell * 0.22, cell * 0.12, s * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = C.fur;
-    ctx.beginPath();
-    ctx.arc(cell * 0.05, 0, cell * 0.46, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = C.spot;
-    ctx.beginPath();
-    ctx.arc(-cell * 0.12, -cell * 0.18, cell * 0.09, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cell * 0.48, 0, cell * 0.1, cell * 0.08, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    for (const s of [-1, 1]) {
-      const ex = cell * 0.22, ey = s * cell * 0.17;
-      if (dead) {
-        ctx.strokeStyle = C.spot;
-        ctx.lineWidth = cell * 0.05;
-        ctx.beginPath();
-        ctx.moveTo(ex - cell * 0.06, ey - cell * 0.06); ctx.lineTo(ex + cell * 0.06, ey + cell * 0.06);
-        ctx.moveTo(ex + cell * 0.06, ey - cell * 0.06); ctx.lineTo(ex - cell * 0.06, ey + cell * 0.06);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = C.spot;
-        ctx.beginPath();
-        ctx.arc(ex, ey, cell * 0.065, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = C.fur;
-        ctx.beginPath();
-        ctx.arc(ex + cell * 0.02, ey - cell * 0.02, cell * 0.022, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    ctx.translate(x, y - bob);
+    if (dead) ctx.rotate(d.x > 0 ? -0.25 : 0.25);
+    else if (d.x) ctx.rotate(Math.sin(gait) * 0.035);
+    if (d.x > 0) ctx.scale(-1, 1);        // Sprite schaut nach links
+    // heller Rand, damit Schwarz auf Gras lesbar bleibt
+    ctx.shadowColor = 'rgba(251,250,246,0.55)';
+    ctx.shadowBlur = cell * 0.12;
+    ctx.drawImage(img, -sw / 2, -sh, sw, sh);
     ctx.restore();
   }
 
