@@ -2,10 +2,19 @@
 
 (() => {
   const COLS = 21, ROWS = 21;
-  const COMBO_MS = 3000, BONE_MS = 6000, SPOT_EVERY = 3, MAX_COMBO = 5;
+  const COMBO_MS = 3000, ITEM_MS = 6000, POOP_EVERY = 3, MAX_COMBO = 5, SPRINT_MS = 5000;
   const C = {
-    lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6', spot: '#16130f',
-    kibble: '#b8662e', kibbleHi: '#e09a5c', gold: '#f2c14e', collar: '#e0483e',
+    lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6',
+    poop: '#6b4423', poopHi: '#93683e',
+    leash: '#d23a30', leashHi: '#f07a6e',
+    kibble: '#b8662e', kibbleHi: '#e09a5c', collar: '#e0483e',
+    bag: '#3d6fd1', bagHi: '#a9c6f5', ball: '#d7e64a', stick: '#8a5a2b',
+  };
+  // Sonder-Items, höchstens eins gleichzeitig auf dem Feld
+  const ITEMS = {
+    bag: { pts: 50, chance: 0.12 },   // Kotbeutel: räumt 3 Haufen weg
+    ball: { pts: 30, chance: 0.12 },  // Sprint: schneller, Leckerlis zählen doppelt
+    stick: { pts: 20, chance: 0.10 }, // Leine 2 Felder kürzer
   };
   const KEYS = {
     ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1],
@@ -41,25 +50,20 @@
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
-  // stabiles Fellmuster pro Segment
-  function hash(n) {
-    let t = Math.imul(n ^ 0x9E3779B9, 0x85EBCA6B);
-    t ^= t >>> 13; t = Math.imul(t, 0xC2B2AE35);
-    return ((t ^ (t >>> 16)) >>> 0) / 4294967296;
-  }
 
   const bestKey = () => (S.mode === 'daily' ? 'best:daily:' + S.seed : 'best:free');
-  const stepMs = () => Math.max(68, 145 - S.eaten * 2.2);
+  const sprinting = () => S.t < S.sprintUntil;
+  const stepMs = () => Math.max(68, 145 - S.eaten * 2.2) * (sprinting() ? 0.65 : 1);
   const same = (a, b) => a && b && a.x === b.x && a.y === b.y;
 
   // ---------- Spielzustand ----------
   function newGame(mode) {
     const seed = mode === 'daily' ? todaySeed() : (Math.random() * 2 ** 32) >>> 0;
-    const snake = [{ x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
+    const snake = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }, { x: 6, y: 10 }];
     S = {
       mode, seed, rng: seed, snake, from: snake.map(p => ({ ...p })),
-      dir: { x: 1, y: 0 }, queue: [], spots: [], treat: null, bone: null,
-      score: 0, eaten: 0, combo: 1, comboUntil: 0, t: 0, acc: 0,
+      dir: { x: 1, y: 0 }, queue: [], poops: [], treat: null, item: null,
+      score: 0, eaten: 0, combo: 1, comboUntil: 0, sprintUntil: 0, t: 0, acc: 0,
       phase: 'ready', reason: '', newBest: false,
     };
     S.treat = freeCell();
@@ -71,7 +75,7 @@
 
   const occupied = (x, y) => {
     const c = { x, y };
-    return S.snake.some(p => same(p, c)) || S.spots.some(p => same(p, c)) || same(S.treat, c) || same(S.bone, c);
+    return S.snake.some(p => same(p, c)) || S.poops.some(p => same(p, c)) || same(S.treat, c) || same(S.item, c);
   };
 
   function freeCell() {
@@ -87,13 +91,13 @@
   function step() {
     if (S.queue.length) S.dir = S.queue.shift();
     const h = S.snake[0], n = { x: h.x + S.dir.x, y: h.y + S.dir.y };
-    const food = same(S.treat, n) ? 'treat' : same(S.bone, n) ? 'bone' : null;
+    const food = same(S.treat, n) ? 'treat' : same(S.item, n) ? S.item.kind : null;
 
     if (n.x < 0 || n.y < 0 || n.x >= COLS || n.y >= ROWS) return die('Gegen den Zaun gelaufen.');
-    // Schwanzspitze rückt weg, außer Matti wächst gerade
+    // Leinenende rückt nach, außer die Leine wird gerade länger
     const body = food ? S.snake : S.snake.slice(0, -1);
-    if (body.some(p => same(p, n))) return die('In den eigenen Schwanz gebissen.');
-    if (S.spots.some(p => same(p, n))) return die('Über einen Fleck gestolpert.');
+    if (body.some(p => same(p, n))) return die('In der eigenen Leine verheddert.');
+    if (S.poops.some(p => same(p, n))) return die('In einen Haufen getreten.');
 
     S.from = S.snake.map(p => ({ ...p }));
     S.snake.unshift(n);
@@ -103,42 +107,69 @@
     } else {
       S.snake.pop();
     }
-    if (S.bone && S.t > S.bone.until) S.bone = null;
+    if (S.item && S.t > S.item.until) S.item = null;
   }
 
   function eat(kind, at) {
     S.combo = S.t <= S.comboUntil ? Math.min(S.combo + 1, MAX_COMBO) : 1;
     S.comboUntil = S.t + COMBO_MS;
-    const pts = (kind === 'bone' ? 50 : 10) * S.combo;
+    const base = kind === 'treat' ? (sprinting() ? 20 : 10) : ITEMS[kind].pts;
+    const pts = base * S.combo;
     S.score += pts;
-    floatText(at.x + 0.5, at.y + 0.2, '+' + pts);
+    const x = at.x + 0.5, y = at.y + 0.5;
+    floatText(x, at.y + 0.2, '+' + pts);
 
-    if (kind === 'bone') {
-      S.bone = null;
-      burst(at.x + 0.5, at.y + 0.5, C.gold, 26);
-      for (let i = 0; i < 3 && S.spots.length; i++) {
-        const [s] = S.spots.splice(Math.floor(rand() * S.spots.length), 1);
-        burst(s.x + 0.5, s.y + 0.5, C.spot, 10);
-      }
-      sfx.bone();
-    } else {
+    if (kind === 'treat') {
       S.eaten++;
-      burst(at.x + 0.5, at.y + 0.5, C.kibbleHi, 12);
+      burst(x, y, C.kibbleHi, 12);
       S.treat = freeCell();
       sfx.eat(S.combo);
-      if (S.eaten % SPOT_EVERY === 0) dropSpot();
-      if (!S.bone && S.eaten >= 5 && rand() < 0.22) {
-        const c = freeCell();
-        if (c) S.bone = { ...c, until: S.t + BONE_MS };
+      if (S.eaten % POOP_EVERY === 0) dropPoop();
+      if (!S.item && S.eaten >= 4) spawnItem();
+    } else {
+      S.item = null;
+      sfx.item();
+      if (kind === 'bag') {
+        burst(x, y, C.bagHi, 20);
+        for (let i = 0; i < 3 && S.poops.length; i++) {
+          const [p] = S.poops.splice(Math.floor(rand() * S.poops.length), 1);
+          burst(p.x + 0.5, p.y + 0.5, C.poop, 10);
+        }
+      } else if (kind === 'ball') {
+        burst(x, y, C.ball, 20);
+        S.sprintUntil = S.t + SPRINT_MS;
+        floatText(x, at.y - 0.4, 'Sprint!');
+      } else if (kind === 'stick') {
+        burst(x, y, C.stick, 16);
+        shorten(3); // 1 Feld Wachstum durchs Fressen + 2 kürzer
       }
     }
     updateHud();
   }
 
-  // Matti verliert einen Fleck am Schwanzende -> bleibt als Hindernis liegen
-  function dropSpot() {
-    const tail = S.snake[S.snake.length - 1];
-    S.spots.push({ x: tail.x, y: tail.y, rot: rand() * Math.PI, born: S.t });
+  function shorten(n) {
+    const keep = Math.max(3, S.snake.length - n);
+    for (const p of S.snake.slice(keep)) burst(p.x + 0.5, p.y + 0.5, C.leash, 4);
+    S.snake.length = keep;
+    S.from.length = keep;
+  }
+
+  function spawnItem() {
+    for (const [kind, it] of Object.entries(ITEMS)) {
+      if (kind === 'bag' && S.poops.length < 2) continue;
+      if (kind === 'stick' && S.snake.length < 7) continue;
+      if (rand() < it.chance) {
+        const c = freeCell();
+        if (c) S.item = { kind, ...c, until: S.t + ITEM_MS };
+        return;
+      }
+    }
+  }
+
+  // Matti macht hinter sich ein Häufchen -> bleibt als Hindernis liegen
+  function dropPoop() {
+    const p = S.snake[Math.min(2, S.snake.length - 1)];
+    S.poops.push({ x: p.x, y: p.y, born: S.t, flip: rand() < 0.5 });
   }
 
   function die(reason) {
@@ -223,7 +254,7 @@
   }
   const sfx = {
     eat: c => { const f = 440 * 2 ** ((c - 1) * 2 / 12); tone(f, f * 1.5, 0.09); },
-    bone: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.01, 0.12, 'triangle', 0.08, i * 0.07)),
+    item: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.01, 0.12, 'triangle', 0.08, i * 0.07)),
     die: () => tone(260, 60, 0.5, 'sawtooth', 0.08),
   };
 
@@ -264,17 +295,71 @@
     ctx.restore();
   }
 
-  function blob(x, y, r, rot) {
+  function poopShape(x, y, k, flip) {
+    const c = cell * k;
     ctx.save();
-    ctx.translate(x * cell, y * cell);
-    ctx.rotate(rot);
-    ctx.fillStyle = C.spot;
+    ctx.translate(x * cell, y * cell + cell * 0.18);
+    if (flip) ctx.scale(-1, 1);
+    ctx.fillStyle = C.poop;
+    for (const [w, h, dy] of [[0.36, 0.13, 0], [0.27, 0.11, -0.15], [0.17, 0.09, -0.28]]) {
+      ctx.beginPath();
+      ctx.ellipse(0, dy * c, w * c, h * c, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * cell, r * cell * 0.78, 0, 0, Math.PI * 2);
+    ctx.moveTo(-0.07 * c, -0.33 * c);
+    ctx.quadraticCurveTo(0.02 * c, -0.5 * c, 0.11 * c, -0.43 * c);
+    ctx.quadraticCurveTo(0.04 * c, -0.37 * c, 0.06 * c, -0.31 * c);
     ctx.fill();
+    ctx.fillStyle = C.poopHi;
     ctx.beginPath();
-    ctx.arc(r * cell * 0.62, -r * cell * 0.5, r * cell * 0.38, 0, Math.PI * 2);
+    ctx.ellipse(-0.13 * c, -0.03 * c, 0.1 * c, 0.035 * c, -0.2, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  function drawItem(it, now) {
+    const c = cell * 1.3;
+    ctx.save();
+    ctx.translate((it.x + 0.5) * cell, (it.y + 0.5) * cell + Math.sin(now / 250) * cell * 0.05);
+    ctx.shadowColor = 'rgba(255,255,255,0.75)';
+    ctx.shadowBlur = c * (0.3 + 0.2 * Math.sin(now / 150));
+    ctx.lineCap = 'round';
+    if (it.kind === 'ball') {
+      ctx.fillStyle = C.ball;
+      ctx.beginPath();
+      ctx.arc(0, 0, c * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = C.fur;
+      ctx.lineWidth = c * 0.05;
+      ctx.beginPath(); ctx.arc(-c * 0.34, 0, c * 0.22, -1, 1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(c * 0.34, 0, c * 0.22, Math.PI - 1, Math.PI + 1); ctx.stroke();
+    } else if (it.kind === 'stick') {
+      ctx.rotate(-0.6);
+      ctx.strokeStyle = C.stick;
+      ctx.lineWidth = c * 0.13;
+      ctx.beginPath(); ctx.moveTo(-c * 0.42, 0); ctx.lineTo(c * 0.42, 0); ctx.stroke();
+      ctx.lineWidth = c * 0.07;
+      ctx.beginPath(); ctx.moveTo(c * 0.08, 0); ctx.lineTo(c * 0.24, -c * 0.2); ctx.stroke();
+    } else {
+      // Kotbeutel, oben verknotet
+      ctx.fillStyle = C.bag;
+      ctx.beginPath();
+      ctx.moveTo(-c * 0.24, -c * 0.12);
+      ctx.quadraticCurveTo(-c * 0.32, c * 0.34, 0, c * 0.34);
+      ctx.quadraticCurveTo(c * 0.32, c * 0.34, c * 0.24, -c * 0.12);
+      ctx.closePath();
+      ctx.fill();
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(sx * c * 0.11, -c * 0.22, c * 0.07, c * 0.13, sx * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = C.bagHi;
+      ctx.fillRect(-c * 0.14, c * 0.02, c * 0.05, c * 0.18);
+    }
     ctx.restore();
   }
 
@@ -288,27 +373,19 @@
       ctx.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
     }
 
-    for (const s of S.spots) {
-      const k = Math.min(1, (S.t - s.born) / 250);
-      blob(s.x + 0.5, s.y + 0.5, 0.34 * (1 - (1 - k) ** 3), s.rot);
+    for (const p of S.poops) {
+      const k = Math.min(1, (S.t - p.born) / 250);
+      poopShape(p.x + 0.5, p.y + 0.5, 1 - (1 - k) ** 3, p.flip);
     }
 
     if (S.treat) {
       const bob = Math.sin(now / 300) * 0.05;
       boneShape(S.treat.x + 0.5, S.treat.y + 0.5 + bob, 0.95, C.kibble);
     }
-    if (S.bone) {
-      const left = S.bone.until - S.t;
-      if (left > 1500 || Math.floor(now / 120) % 2) {
-        ctx.save();
-        ctx.shadowColor = C.gold;
-        ctx.shadowBlur = cell * (0.4 + 0.25 * Math.sin(now / 150));
-        boneShape(S.bone.x + 0.5, S.bone.y + 0.5, 1.3, C.gold);
-        ctx.restore();
-      }
-    }
+    // läuft das Item ab, blinkt es
+    if (S.item && (S.item.until - S.t > 1500 || Math.floor(now / 120) % 2)) drawItem(S.item, now);
 
-    drawMatti(alpha);
+    drawMatti(alpha, now);
 
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, p.life);
@@ -327,90 +404,101 @@
     ctx.restore();
   }
 
-  function drawMatti(alpha) {
-    const n = S.snake.length;
+  // Sprites (aus KI-Charakterblatt ausgeschnitten): side schaut nach links
+  const SPRITES = {};
+  for (const n of ['side', 'back', 'front']) {
+    const img = new Image();
+    img.src = `assets/matti-${n}.png`;
+    SPRITES[n] = img;
+  }
+  const ready = img => img.complete && img.naturalWidth > 0;
+  // Halsband-Position im Sprite (relativ, 0..1)
+  const COLLAR = { side: [0.26, 0.27], back: [0.5, 0.25], front: [0.5, 0.29] };
+
+  function drawLeash(pts) {
+    const n = pts.length;
+    if (n < 2) return;
+    const path = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    };
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = cell * 0.22;
+    ctx.save(); ctx.translate(0, cell * 0.08); path(); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = C.leash;
+    ctx.lineWidth = cell * 0.16;
+    path(); ctx.stroke();
+    // Webmuster der Leine
+    ctx.strokeStyle = C.leashHi;
+    ctx.lineWidth = cell * 0.04;
+    ctx.setLineDash([cell * 0.12, cell * 0.14]);
+    path(); ctx.stroke();
+    ctx.setLineDash([]);
+    // Handschlaufe am Ende
+    const e = pts[n - 1], p = pts[n - 2];
+    const ang = Math.atan2(e.y - p.y, e.x - p.x);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(ang);
+    ctx.strokeStyle = C.leash;
+    ctx.lineWidth = cell * 0.13;
+    ctx.beginPath();
+    ctx.ellipse(cell * 0.18, 0, cell * 0.22, cell * 0.15, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMatti(alpha, now) {
     const pts = S.snake.map((p, i) => {
       const f = S.from[i] || p;
       return { x: (f.x + (p.x - f.x) * alpha + 0.5) * cell, y: (f.y + (p.y - f.y) * alpha + 0.5) * cell };
     });
 
-    const path = (dy = 0) => {
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y + dy);
-      for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y + dy);
-    };
-    ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.lineWidth = cell * 0.78;
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    path(cell * 0.09);
-    ctx.stroke();
-    ctx.strokeStyle = C.fur;
-    path();
-    ctx.stroke();
-
-    // Fellflecken: Index vom Schwanz aus, damit das Muster beim Wachsen stabil bleibt
-    ctx.fillStyle = C.spot;
-    for (let i = 1; i < n; i++) {
-      const k = n - 1 - i;
-      if (hash(k) > 0.62) continue;
-      const ox = (hash(k + 77) - 0.5) * 0.34 * cell, oy = (hash(k + 191) - 0.5) * 0.34 * cell;
-      ctx.beginPath();
-      ctx.arc(pts[i].x + ox, pts[i].y + oy, (0.07 + hash(k + 33) * 0.09) * cell, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Kopf
     const h = S.snake[0], f = S.from[0] || h;
     const mv = { x: h.x - f.x, y: h.y - f.y };
     const d = mv.x || mv.y ? mv : S.dir;
+    const running = S.phase === 'run';
     const dead = S.phase === 'over';
+    const gait = running ? (S.t / stepMs()) * Math.PI : 0;  // ein Schritt pro Feld
+    const bob = Math.abs(Math.sin(gait)) * cell * 0.07;
+    const head = pts[0], neck = pts[1] || head;
+
+    let img, x, y;
+    if (d.x) {
+      img = SPRITES.side;
+      x = (head.x + neck.x) / 2;          // Körper zwischen Kopf- und Nackenfeld
+      y = head.y + cell * 0.45;           // Pfoten am unteren Zellrand
+    } else {
+      img = d.y < 0 ? SPRITES.back : SPRITES.front;
+      x = head.x;
+      y = (d.y < 0 ? neck.y : head.y) + cell * 0.45;
+    }
+    if (!ready(img)) { drawLeash(pts); return; }
+    const ratio = img.naturalWidth / img.naturalHeight;
+    const sw = d.x ? cell * 2.3 : cell * 2.7 * ratio, sh = sw / ratio;
+
+    // Leine startet am Halsband und läuft hinter Matti entlang
+    const [cu, cv] = COLLAR[img === SPRITES.side ? 'side' : d.y < 0 ? 'back' : 'front'];
+    const leash = [{ x: x + (cu - 0.5) * sw * (d.x > 0 ? -1 : 1), y: y - bob - sh * (1 - cv) }, ...pts.slice(1)];
+    drawLeash(leash);
+
+    // Bodenschatten
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, (d.x ? sw * 0.4 : sw * 0.7), cell * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.save();
-    ctx.translate(pts[0].x, pts[0].y);
-    ctx.rotate(Math.atan2(d.y, d.x));
-
-    ctx.fillStyle = C.collar;
-    ctx.fillRect(-cell * 0.36, -cell * 0.4, cell * 0.14, cell * 0.8);
-
-    ctx.fillStyle = C.spot;
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.ellipse(-cell * 0.08, s * cell * 0.4, cell * 0.22, cell * 0.12, s * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = C.fur;
-    ctx.beginPath();
-    ctx.arc(cell * 0.05, 0, cell * 0.46, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = C.spot;
-    ctx.beginPath();
-    ctx.arc(-cell * 0.12, -cell * 0.18, cell * 0.09, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cell * 0.48, 0, cell * 0.1, cell * 0.08, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    for (const s of [-1, 1]) {
-      const ex = cell * 0.22, ey = s * cell * 0.17;
-      if (dead) {
-        ctx.strokeStyle = C.spot;
-        ctx.lineWidth = cell * 0.05;
-        ctx.beginPath();
-        ctx.moveTo(ex - cell * 0.06, ey - cell * 0.06); ctx.lineTo(ex + cell * 0.06, ey + cell * 0.06);
-        ctx.moveTo(ex + cell * 0.06, ey - cell * 0.06); ctx.lineTo(ex - cell * 0.06, ey + cell * 0.06);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = C.spot;
-        ctx.beginPath();
-        ctx.arc(ex, ey, cell * 0.065, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = C.fur;
-        ctx.beginPath();
-        ctx.arc(ex + cell * 0.02, ey - cell * 0.02, cell * 0.022, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    ctx.translate(x, y - bob);
+    if (dead) ctx.rotate(d.x > 0 ? -0.25 : 0.25);
+    else if (d.x) ctx.rotate(Math.sin(gait) * 0.035);
+    if (d.x > 0) ctx.scale(-1, 1);        // Sprite schaut nach links
+    // heller Rand, damit Schwarz auf Gras lesbar bleibt
+    ctx.shadowColor = sprinting() ? C.ball : 'rgba(251,250,246,0.55)';
+    ctx.shadowBlur = cell * (sprinting() ? 0.4 : 0.12);
+    ctx.drawImage(img, -sw / 2, -sh, sw, sh);
     ctx.restore();
   }
 
@@ -486,7 +574,7 @@
 
   // ---------- Boot ----------
   function boot(data = {}) {
-    if (data.S) {
+    if (data.S && data.S.poops) {
       S = data.S;
       if (S.phase === 'run') S.phase = 'pause';
       updateHud();
