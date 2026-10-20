@@ -40,13 +40,13 @@ python -m http.server 8000   # dann http://localhost:8000
 - `index.html` – Markup, HUD, Overlay
 - `style.css` – Layout & Farben
 - `game.js` – Spiellogik (Fixed-Timestep, Interpolation), Canvas-Rendering, WebAudio-SFX, Input
-- `assets/` – Hunde-Sprites (Seite, Rücken, Front), aus einem KI-generierten Charakterblatt (MAI-Image-2.6) freigestellt
+- `assets/` – Hunde-Sprites (Seite ohne Beine, Rücken, Front), aus einem KI-generierten Charakterblatt (MAI-Image-2.6) freigestellt; die Beine der Seitenansicht werden zur Laufzeit gezeichnet
 
 ## Ideen / Roadmap
 
 - [x] GitHub Pages Deployment (Branch `main`, Root)
 - [x] Power-ups: Kotbeutel, Tennisball, Stock
 - [ ] Eichhörnchen als bewegliches Ziel
-- [ ] Lauf-Animation (mehrere Frames pro Richtung)
+- [x] Lauf-Animation (Trab, prozedurale Beine)
 - [ ] Online-Leaderboard für den Tages-Lauf
 - [ ] Skins (Leine, Halsband-Farben), Level mit festen Hindernissen
