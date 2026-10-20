@@ -136,17 +136,14 @@ button { font: inherit; cursor: pointer; }
   box-sizing: border-box;
   width: min(100%, 560px, max(280px, calc(100dvh - 280px)));
   max-width: 100%;
-  aspect-ratio: 1;
-  border: 6px solid var(--fence);
   border-radius: 10px;
   overflow: hidden;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
 }
 
-canvas { display: block; width: 100%; height: 100%; }
+canvas { display: block; width: 100%; }
 .overlay[hidden] { display: none; }
 
 .overlay {

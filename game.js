@@ -2,9 +2,12 @@
 
 (() => {
   const COLS = 21, ROWS = 21;
+  // Rand um das Spielfeld (in Feldern) für den Zaun; oben zusätzlich Platz,
+  // damit Mattis Kopf in Reihe 0 über den Zaun ragen kann
+  const PAD = { top: 1.8, side: 0.32, bottom: 0.32 };
   const COMBO_MS = 3000, ITEM_MS = 6000, POOP_EVERY = 3, MAX_COMBO = 5, SPRINT_MS = 5000;
   const C = {
-    lawnA: '#3d7a4b', lawnB: '#43834f', fur: '#fbfaf6',
+    lawnA: '#3d7a4b', lawnB: '#43834f', fence: '#7a5a3a', fur: '#fbfaf6',
     poop: '#6b4423', poopHi: '#93683e',
     leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
     treat: '#f6e7c8', treatEdge: '#7a4a1e', kibbleHi: '#e09a5c', collar: '#e0483e',
@@ -36,7 +39,7 @@
     set(k, v) { try { localStorage.setItem('matti-run:' + k, JSON.stringify(v)); } catch { /* egal */ } },
   };
 
-  let S, size = 0, cell = 0, dpr = 1, shake = 0, last = 0, particles = [], touch = null;
+  let S, W = 0, H = 0, cell = 0, dpr = 1, shake = 0, last = 0, particles = [], touch = null;
   let muted = store.get('muted', false);
 
   // ---------- RNG ----------
@@ -271,15 +274,39 @@
   }
 
   // ---------- Rendering ----------
+  // Canvas-Höhe wird explizit in px gesetzt und der Rahmen wächst mit.
+  // (height: 100% in einer aspect-ratio-Box rechnet Safari anders -> Rand überdeckte die unterste Reihe)
   function resize() {
-    const w = wrap.clientWidth;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    size = w;
-    cell = w / COLS;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(w * dpr);
+    const w = wrap.clientWidth, r = Math.min(window.devicePixelRatio || 1, 2);
+    if (w === W && r === dpr) return;   // eigene Höhenänderung löst den Observer erneut aus
+    dpr = r;
+    W = w;
+    cell = w / (COLS + 2 * PAD.side);
+    H = Math.round(cell * (ROWS + PAD.top + PAD.bottom));
+    canvas.style.height = H + 'px';
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+
+  // Zaun direkt um die Wiese; darüber bleibt der Seitenhintergrund sichtbar,
+  // damit klar ist, wo das Feld endet
+  function drawFence() {
+    const f = PAD.side * cell, y = PAD.top * cell - f;
+    const h = (ROWS + 2 * PAD.side) * cell;
+    const box = dy => {
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(0, y + dy, W, h, f * 1.2);
+      else ctx.rect(0, y + dy, W, h);
+    };
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    box(f * 0.6);
+    ctx.fill();
+    ctx.fillStyle = C.fence;
+    box(0);
+    ctx.fill();
+  }
+
 
   function boneShape(x, y, s, fill, outline) {
     const c = cell * s;
@@ -389,8 +416,10 @@
 
   function render(alpha, now) {
     ctx.save();
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, W, H);
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    drawFence();
+    ctx.translate(PAD.side * cell, PAD.top * cell);
 
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       ctx.fillStyle = (x + y) % 2 ? C.lawnA : C.lawnB;
