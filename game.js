@@ -13,11 +13,13 @@
     hard: { start: 120, min: 58, accel: 2.6, poopEvery: 2 },
   };
   const C = {
-    lawnA: '#3d7a4b', lawnB: '#43834f', fence: '#7a5a3a', fur: '#fbfaf6',
-    poop: '#6b4423', poopHi: '#93683e',
+    lawn: '#46894f', grassDark: '#2f6e3d', grassLight: '#6bb068', fur: '#fbfaf6',
+    wood: '#b98a56', woodHi: '#d6ad78', woodDark: '#8a6238', sign: '#ecd9b0',
+    poop: '#6b4423', poopHi: '#9a6f45',
     leash: '#d23a30', leashHi: '#f07a6e', leg: '#27292c', legFar: '#17181b',
-    treat: '#f6e7c8', treatEdge: '#7a4a1e', kibbleHi: '#e09a5c', collar: '#e0483e',
-    bag: '#3d6fd1', bagHi: '#a9c6f5', ball: '#d7e64a', stick: '#8a5a2b',
+    treat: '#f6e7c8', treatShade: '#e2c898', treatEdge: '#b98d55', kibbleHi: '#e09a5c', collar: '#e0483e',
+    bag: '#3d6fd1', bagShade: '#2c55a8', bagHi: '#a9c6f5', ball: '#d7e64a', ballShade: '#a8bd2e',
+    stick: '#8a5a2b', stickHi: '#b98350', leaf: '#5fae4f',
   };
   // Sonder-Items, höchstens eins gleichzeitig auf dem Feld
   const ITEMS = {
@@ -318,129 +320,317 @@
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    buildBg();
   }
 
-  // Zaun direkt um die Wiese; darüber bleibt der Seitenhintergrund sichtbar,
-  // damit klar ist, wo das Feld endet
-  function drawFence() {
-    const f = PAD.side * cell, y = PAD.top * cell - f;
-    const h = (ROWS + 2 * PAD.side) * cell;
-    const box = dy => {
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(0, y + dy, W, h, f * 1.2);
-      else ctx.rect(0, y + dy, W, h);
+  // ---------- Hintergrund: Wiese + Holzzaun, einmal pro Größe vorgerendert ----------
+  const bg = document.createElement('canvas');
+  const INK = '#2a2019';   // dunkle Kontur wie bei Mattis Sprite
+
+  // fester Seed: die Wiese sieht immer gleich aus und hängt nicht am Spiel-RNG
+  function decoRng(seed) {
+    return () => {
+      let t = (seed = (seed + 0x6D2B79F5) | 0);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    box(f * 0.6);
-    ctx.fill();
-    ctx.fillStyle = C.fence;
-    box(0);
+  }
+
+  function buildBg() {
+    bg.width = canvas.width;
+    bg.height = canvas.height;
+    const g = bg.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const c = cell, ox = PAD.side * c, oy = PAD.top * c, lw = COLS * c, lh = ROWS * c;
+    drawLawn(g, ox, oy, lw, lh, c);
+    drawFence(g, ox, oy, lw, lh, c);
+  }
+
+  function drawLawn(g, ox, oy, lw, lh, c) {
+    const r = decoRng(7);
+    g.save();
+    g.beginPath();
+    g.rect(ox, oy, lw, lh);
+    g.clip();
+    g.translate(ox, oy);
+    g.fillStyle = C.lawn;
+    g.fillRect(0, 0, lw, lh);
+    // Raster nur angedeutet, damit man Felder noch abzählen kann
+    g.fillStyle = 'rgba(0, 40, 10, 0.055)';
+    for (let y = 0; y < ROWS; y++) for (let x = (y + 1) % 2; x < COLS; x += 2) g.fillRect(x * c, y * c, c, c);
+    // sonnige und schattige Flecken
+    for (let i = 0; i < 16; i++) {
+      const x = r() * lw, y = r() * lh, rad = (2 + r() * 3) * c;
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, i % 4 ? 'rgba(214, 240, 130, 0.13)' : 'rgba(10, 50, 25, 0.12)');
+      gr.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      g.fillStyle = gr;
+      g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+    // Grasbüschel
+    g.lineCap = 'round';
+    g.lineWidth = Math.max(1, c * 0.045);
+    for (let i = 0; i < 520; i++) {
+      const x = r() * lw, y = r() * lh, h = (0.12 + r() * 0.12) * c;
+      g.strokeStyle = r() < 0.5 ? C.grassDark : C.grassLight;
+      g.beginPath();
+      for (const dx of [-0.07, 0, 0.07]) {
+        g.moveTo(x + dx * c, y);
+        g.lineTo(x + dx * c * 2.2, y - h * (dx ? 0.8 : 1));
+      }
+      g.stroke();
+    }
+    // Klee und kleine Blumen (klein gehalten, damit sie nicht wie Leckerlis wirken)
+    for (let i = 0; i < 26; i++) {
+      const x = r() * lw, y = r() * lh, kind = r();
+      if (kind < 0.35) {
+        g.fillStyle = C.grassDark;
+        for (let k = 0; k < 3; k++) {
+          const a = k * 2.094 + 0.5;
+          g.beginPath();
+          g.arc(x + Math.cos(a) * c * 0.06, y + Math.sin(a) * c * 0.06, c * 0.055, 0, Math.PI * 2);
+          g.fill();
+        }
+      } else {
+        g.fillStyle = kind < 0.75 ? '#f4f1e6' : '#f1cf4a';
+        for (let k = 0; k < 5; k++) {
+          const a = k * 1.2566;
+          g.beginPath();
+          g.arc(x + Math.cos(a) * c * 0.06, y + Math.sin(a) * c * 0.06, c * 0.04, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.fillStyle = kind < 0.75 ? '#e9b93a' : '#c98f1f';
+        g.beginPath();
+        g.arc(x, y, c * 0.035, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    // Schatten des Zauns am Rand: macht die Feldgrenze deutlich
+    g.strokeStyle = 'rgba(0, 30, 10, 0.22)';
+    g.lineWidth = c * 0.22;
+    g.strokeRect(0, 0, lw, lh);
+    g.restore();
+  }
+
+  function plank(g, x, y, w, h, tip) {
+    const path = () => {
+      g.beginPath();
+      g.moveTo(x, y + h);
+      g.lineTo(x, y + tip);
+      g.lineTo(x + w / 2, y);
+      g.lineTo(x + w, y + tip);
+      g.lineTo(x + w, y + h);
+      g.closePath();
+    };
+    g.fillStyle = C.wood;
+    path(); g.fill();
+    g.fillStyle = C.woodHi;
+    g.fillRect(x + w * 0.14, y + tip, w * 0.16, h - tip);
+    g.fillStyle = C.woodDark;
+    g.fillRect(x + w * 0.74, y + tip, w * 0.26, h - tip);
+    g.strokeStyle = INK;
+    g.lineJoin = 'round';
+    g.lineWidth = Math.max(1, w * 0.1);
+    path(); g.stroke();
+  }
+
+  // Latten oben (von vorn gesehen), Balken mit Pfosten an den Seiten und unten
+  function drawFence(g, ox, oy, lw, lh, c) {
+    const f = PAD.side * c, ow = Math.max(1, c * 0.05);
+    const beam = (x, y, w, h) => {
+      g.fillStyle = C.wood;
+      g.fillRect(x, y, w, h);
+      g.fillStyle = C.woodHi;
+      w > h ? g.fillRect(x, y + h * 0.15, w, h * 0.2) : g.fillRect(x + w * 0.15, y, w * 0.2, h);
+      g.fillStyle = C.woodDark;
+      w > h ? g.fillRect(x, y + h * 0.7, w, h * 0.3) : g.fillRect(x + w * 0.7, y, w * 0.3, h);
+      g.strokeStyle = INK;
+      g.lineWidth = ow;
+      g.strokeRect(x, y, w, h);
+    };
+    const post = (x, y) => {
+      const s = f * 1.15;
+      g.fillStyle = C.woodDark;
+      g.fillRect(x - s / 2, y - s / 2, s, s);
+      g.fillStyle = C.woodHi;
+      g.fillRect(x - s / 2, y - s / 2, s, s * 0.35);
+      g.strokeStyle = INK;
+      g.lineWidth = ow;
+      g.strokeRect(x - s / 2, y - s / 2, s, s);
+    };
+    // Seiten und unten
+    beam(f * 0.2, oy, f * 0.6, lh + f * 0.5);
+    beam(W - f * 0.8, oy, f * 0.6, lh + f * 0.5);
+    beam(f * 0.2, oy + lh + f * 0.2, W - f * 0.4, f * 0.6);
+    for (let i = 0; i <= ROWS; i += 3.5) { post(f / 2, oy + i * c); post(W - f / 2, oy + i * c); }
+    for (let i = 0; i <= COLS; i += 3.5) post(ox + i * c, oy + lh + f / 2);
+    // oben: Querriegel, davor spitze Latten bis an die Wiesenkante
+    const ph = c * 0.95, top = oy - ph;
+    beam(0, top + ph * 0.32, W, c * 0.13);
+    beam(0, top + ph * 0.72, W, c * 0.13);
+    const n = Math.round(W / (c * 0.62)), pw = W / n;
+    for (let i = 0; i < n; i++) plank(g, i * pw + pw * 0.09, top, pw * 0.82, ph, pw * 0.3);
+    // Schild
+    const sw = c * 4.6, sh = c * 0.78, sx = ox + c * 1.2, sy = top + ph * 0.2;
+    g.fillStyle = C.sign;
+    g.strokeStyle = INK;
+    g.lineWidth = ow * 1.4;
+    g.beginPath();
+    g.roundRect ? g.roundRect(sx, sy, sw, sh, c * 0.12) : g.rect(sx, sy, sw, sh);
+    g.fill(); g.stroke();
+    g.fillStyle = INK;
+    g.font = `${Math.round(c * 0.5)}px "Lilita One", system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('HUNDEWIESE', sx + sw / 2, sy + sh / 2 + c * 0.03, sw * 0.88);
+  }
+
+  // ---------- Items: flächig mit dunkler Kontur, passend zu Mattis Zeichenstil ----------
+  // erst alle Teilformen dick in INK umranden, dann füllen -> eine gemeinsame Außenkontur
+  function inked(u, shape, fill) {
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = u * 0.11;
+    shape(); ctx.stroke();
+    ctx.fillStyle = fill;
+    shape(); ctx.fill();
+  }
+
+  function groundShadow(u, w = 0.3) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(0, u * 0.3, u * w, u * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  function halo(x, y, now, color) {
+    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+    ctx.fillStyle = `rgba(${color}, ${0.16 + 0.16 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(x, y, cell * (0.52 + 0.12 * pulse), 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  function boneShape(x, y, s, fill, outline) {
-    const c = cell * s;
+  // Leckerli: Hundekuchen in Knochenform, pulsierender Lichtkreis,
+  // damit es sich auch auf kleinen Handy-Displays klar von den Haufen abhebt
+  function drawTreat(t, now) {
+    const x = (t.x + 0.5) * cell, y = (t.y + 0.5) * cell, u = cell * 1.15;
+    halo(x, y, now, '255, 244, 214');
     ctx.save();
-    ctx.translate(x * cell, y * cell);
+    ctx.translate(x, y + Math.sin(now / 300) * cell * 0.05);
+    groundShadow(u, 0.34);
     ctx.rotate(-0.5);
-    const shape = () => {
+    const bone = () => {
       ctx.beginPath();
-      ctx.rect(-c * 0.32, -c * 0.09, c * 0.64, c * 0.18);
+      ctx.rect(-u * 0.3, -u * 0.09, u * 0.6, u * 0.18);
       for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-        ctx.moveTo(sx * c * 0.33 + c * 0.12, sy * c * 0.09);
-        ctx.arc(sx * c * 0.33, sy * c * 0.09, c * 0.12, 0, Math.PI * 2);
+        ctx.moveTo(sx * u * 0.32 + u * 0.12, sy * u * 0.09);
+        ctx.arc(sx * u * 0.32, sy * u * 0.09, u * 0.12, 0, Math.PI * 2);
       }
     };
-    if (outline) {
-      ctx.strokeStyle = outline;
-      ctx.lineWidth = c * 0.12;
-      ctx.lineJoin = 'round';
-      shape();
-      ctx.stroke();
-    }
-    ctx.fillStyle = fill;
-    shape();
-    ctx.fill('nonzero');
+    inked(u, bone, C.treat);
+    ctx.save();
+    bone(); ctx.clip();
+    ctx.fillStyle = C.treatShade;
+    ctx.fillRect(-u * 0.5, u * 0.03, u, u * 0.3);
+    ctx.fillStyle = C.treatEdge;
+    for (const dx of [-0.14, 0, 0.14]) { ctx.beginPath(); ctx.arc(dx * u, -u * 0.01, u * 0.02, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
     ctx.restore();
   }
 
-  // Leckerli: heller Knochen mit dunkler Kontur und pulsierendem Lichtkreis,
-  // damit es sich auch auf kleinen Handy-Displays klar von den Haufen abhebt
-  function drawTreat(t, now) {
-    const x = (t.x + 0.5) * cell, y = (t.y + 0.5) * cell;
-    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
-    ctx.fillStyle = `rgba(255, 244, 214, ${0.18 + 0.17 * pulse})`;
-    ctx.beginPath();
-    ctx.arc(x, y, cell * (0.5 + 0.12 * pulse), 0, Math.PI * 2);
-    ctx.fill();
-    boneShape(t.x + 0.5, t.y + 0.5 + Math.sin(now / 300) * 0.05, 1.15, C.treat, C.treatEdge);
-  }
-
   function poopShape(x, y, k, flip) {
-    const c = cell * k;
+    const u = cell * k;
     ctx.save();
-    ctx.translate(x * cell, y * cell + cell * 0.18);
+    ctx.translate(x * cell, y * cell);
+    groundShadow(u, 0.4);
+    ctx.translate(0, cell * 0.16);
     if (flip) ctx.scale(-1, 1);
-    ctx.fillStyle = C.poop;
-    for (const [w, h, dy] of [[0.36, 0.13, 0], [0.27, 0.11, -0.15], [0.17, 0.09, -0.28]]) {
+    const swirl = () => {
       ctx.beginPath();
-      ctx.ellipse(0, dy * c, w * c, h * c, 0, 0, Math.PI * 2);
+      for (const [w, h, dy] of [[0.36, 0.14, 0], [0.27, 0.12, -0.16], [0.17, 0.1, -0.3]]) {
+        ctx.moveTo(w * u, dy * u);
+        ctx.ellipse(0, dy * u, w * u, h * u, 0, 0, Math.PI * 2);
+      }
+      ctx.moveTo(-0.07 * u, -0.36 * u);
+      ctx.quadraticCurveTo(0.02 * u, -0.54 * u, 0.12 * u, -0.46 * u);
+      ctx.quadraticCurveTo(0.04 * u, -0.4 * u, 0.06 * u, -0.33 * u);
+      ctx.closePath();
+    };
+    inked(u, swirl, C.poop);
+    ctx.fillStyle = C.poopHi;
+    for (const [dx, dy, w] of [[-0.14, -0.03, 0.11], [-0.1, -0.19, 0.08], [-0.05, -0.33, 0.05]]) {
+      ctx.beginPath();
+      ctx.ellipse(dx * u, dy * u, w * u, 0.035 * u, -0.2, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.beginPath();
-    ctx.moveTo(-0.07 * c, -0.33 * c);
-    ctx.quadraticCurveTo(0.02 * c, -0.5 * c, 0.11 * c, -0.43 * c);
-    ctx.quadraticCurveTo(0.04 * c, -0.37 * c, 0.06 * c, -0.31 * c);
-    ctx.fill();
-    ctx.fillStyle = C.poopHi;
-    ctx.beginPath();
-    ctx.ellipse(-0.13 * c, -0.03 * c, 0.1 * c, 0.035 * c, -0.2, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 
   function drawItem(it, now) {
-    const c = cell * 1.3;
+    const u = cell * 1.3, x = (it.x + 0.5) * cell, y = (it.y + 0.5) * cell;
+    halo(x, y, now, '255, 255, 255');
     ctx.save();
-    ctx.translate((it.x + 0.5) * cell, (it.y + 0.5) * cell + Math.sin(now / 250) * cell * 0.05);
-    ctx.shadowColor = 'rgba(255,255,255,0.75)';
-    ctx.shadowBlur = c * (0.3 + 0.2 * Math.sin(now / 150));
-    ctx.lineCap = 'round';
+    ctx.translate(x, y + Math.sin(now / 250) * cell * 0.05);
+    groundShadow(u);
     if (it.kind === 'ball') {
+      const ball = () => { ctx.beginPath(); ctx.arc(0, 0, u * 0.28, 0, Math.PI * 2); };
+      inked(u, ball, C.ball);
+      ctx.save();
+      ball(); ctx.clip();
+      ctx.fillStyle = C.ballShade;
+      ctx.beginPath(); ctx.arc(u * 0.1, u * 0.12, u * 0.3, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = C.ball;
-      ctx.beginPath();
-      ctx.arc(0, 0, c * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(-u * 0.03, -u * 0.04, u * 0.27, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = C.fur;
-      ctx.lineWidth = c * 0.05;
-      ctx.beginPath(); ctx.arc(-c * 0.34, 0, c * 0.22, -1, 1); ctx.stroke();
-      ctx.beginPath(); ctx.arc(c * 0.34, 0, c * 0.22, Math.PI - 1, Math.PI + 1); ctx.stroke();
+      ctx.lineWidth = u * 0.045;
+      ctx.beginPath(); ctx.arc(-u * 0.34, 0, u * 0.24, -1.1, 1.1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(u * 0.34, 0, u * 0.24, Math.PI - 1.1, Math.PI + 1.1); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath(); ctx.ellipse(-u * 0.1, -u * 0.13, u * 0.07, u * 0.04, -0.6, 0, Math.PI * 2); ctx.fill();
     } else if (it.kind === 'stick') {
       ctx.rotate(-0.6);
-      ctx.strokeStyle = C.stick;
-      ctx.lineWidth = c * 0.13;
-      ctx.beginPath(); ctx.moveTo(-c * 0.42, 0); ctx.lineTo(c * 0.42, 0); ctx.stroke();
-      ctx.lineWidth = c * 0.07;
-      ctx.beginPath(); ctx.moveTo(c * 0.08, 0); ctx.lineTo(c * 0.24, -c * 0.2); ctx.stroke();
+      const branch = () => {
+        ctx.beginPath();
+        ctx.moveTo(-u * 0.4, 0); ctx.lineTo(u * 0.4, 0);
+        ctx.moveTo(u * 0.06, 0); ctx.lineTo(u * 0.22, -u * 0.2);
+      };
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.strokeStyle = INK; ctx.lineWidth = u * 0.23; branch(); ctx.stroke();
+      ctx.strokeStyle = C.stick; ctx.lineWidth = u * 0.13; branch(); ctx.stroke();
+      ctx.strokeStyle = C.stickHi; ctx.lineWidth = u * 0.035;
+      ctx.beginPath(); ctx.moveTo(-u * 0.34, -u * 0.025); ctx.lineTo(u * 0.3, -u * 0.025); ctx.stroke();
+      // Schnittfläche und Blatt
+      ctx.fillStyle = C.treat;
+      ctx.beginPath(); ctx.ellipse(-u * 0.4, 0, u * 0.03, u * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.translate(u * 0.24, -u * 0.23);
+      ctx.rotate(-0.5);
+      inked(u * 0.6, () => { ctx.beginPath(); ctx.ellipse(u * 0.06, 0, u * 0.09, u * 0.045, 0, 0, Math.PI * 2); }, C.leaf);
     } else {
       // Kotbeutel, oben verknotet
-      ctx.fillStyle = C.bag;
-      ctx.beginPath();
-      ctx.moveTo(-c * 0.24, -c * 0.12);
-      ctx.quadraticCurveTo(-c * 0.32, c * 0.34, 0, c * 0.34);
-      ctx.quadraticCurveTo(c * 0.32, c * 0.34, c * 0.24, -c * 0.12);
-      ctx.closePath();
-      ctx.fill();
-      for (const sx of [-1, 1]) {
+      const bag = () => {
         ctx.beginPath();
-        ctx.ellipse(sx * c * 0.11, -c * 0.22, c * 0.07, c * 0.13, sx * 0.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
+        ctx.moveTo(-u * 0.22, -u * 0.1);
+        ctx.quadraticCurveTo(-u * 0.32, u * 0.32, 0, u * 0.32);
+        ctx.quadraticCurveTo(u * 0.32, u * 0.32, u * 0.22, -u * 0.1);
+        ctx.closePath();
+        for (const sx of [-1, 1]) {
+          ctx.moveTo(sx * u * 0.11 + u * 0.07, -u * 0.2);
+          ctx.ellipse(sx * u * 0.11, -u * 0.2, u * 0.07, u * 0.13, sx * 0.5, 0, Math.PI * 2);
+        }
+      };
+      inked(u, bag, C.bag);
+      ctx.save();
+      bag(); ctx.clip();
+      ctx.fillStyle = C.bagShade;
+      ctx.fillRect(u * 0.06, -u * 0.4, u * 0.4, u * 0.8);
+      ctx.restore();
       ctx.fillStyle = C.bagHi;
-      ctx.fillRect(-c * 0.14, c * 0.02, c * 0.05, c * 0.18);
+      ctx.beginPath(); ctx.ellipse(-u * 0.12, u * 0.08, u * 0.035, u * 0.11, 0.15, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = INK; ctx.lineWidth = u * 0.04;
+      ctx.beginPath(); ctx.moveTo(-u * 0.1, -u * 0.09); ctx.lineTo(u * 0.1, -u * 0.09); ctx.stroke();
     }
     ctx.restore();
   }
@@ -449,13 +639,8 @@
     ctx.save();
     ctx.clearRect(0, 0, W, H);
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-    drawFence();
+    ctx.drawImage(bg, 0, 0, W, H);
     ctx.translate(PAD.side * cell, PAD.top * cell);
-
-    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
-      ctx.fillStyle = (x + y) % 2 ? C.lawnA : C.lawnB;
-      ctx.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
-    }
 
     for (const p of S.poops) {
       const k = Math.min(1, (S.t - p.born) / 250);
@@ -746,6 +931,7 @@
     setDpad(store.get('dpad', false));
     resize();
     new ResizeObserver(resize).observe(wrap);
+    document.fonts?.ready.then(buildBg);   // Schild braucht die geladene Schrift
     requestAnimationFrame(frame);
   }
 
