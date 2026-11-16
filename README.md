@@ -47,6 +47,7 @@ python -m http.server 8000   # dann http://localhost:8000
 
 - [x] GitHub Pages Deployment (Branch `main`, Root)
 - [x] Power-ups: Kotbeutel, Tennisball, Stock
+- [x] Wiese mit Gras und Blumen, Holzzaun mit Schild, Items im Zeichenstil des Hundes
 - [ ] Eichhörnchen als bewegliches Ziel
 - [x] Lauf-Animation (Trab, prozedurale Beine)
 - [ ] Online-Leaderboard für den Tages-Lauf
